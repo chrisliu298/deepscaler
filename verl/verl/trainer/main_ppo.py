@@ -191,6 +191,9 @@ def main_task(config):
     elif reward_manager_name == "prime":
         from verl.utils.reward_score.prime import compute_score as prime_compute_score
         compute_score = prime_compute_score
+    elif reward_manager_name == "deepscaler":
+        from deepscaler.rewards.math_reward import deepscaler_reward_fn
+        compute_score = deepscaler_reward_fn
     elif reward_manager_name == "math_verify_v0_6_0":
         from verl.utils.reward_score.math_verify_v0_6_0 import compute_score as math_verify_v0_6_0_compute_score
         compute_score = math_verify_v0_6_0_compute_score
