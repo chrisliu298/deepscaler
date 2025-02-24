@@ -36,7 +36,8 @@ class RewardManager():
     """The reward manager.
     """
 
-    def __init__(self, tokenizer, num_examine) -> None:
+    def __init__(self, reward_fn, tokenizer, num_examine) -> None:
+        self.reward_fn = reward_fn
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
 
@@ -76,9 +77,9 @@ class RewardManager():
             ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
 
             # select rm_score
-            data_source = data_item.non_tensor_batch['data_source']
-            compute_score_fn = _select_rm_score_fn(data_source)
-            score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth)
+            # data_source = data_item.non_tensor_batch['data_source']
+            # compute_score_fn = _select_rm_score_fn(data_source)
+            score = self.reward_fn(solution_str=sequences_str, ground_truth=ground_truth)
             
             # with print_lock:
             #     if data_source not in already_print_data_sources:
@@ -117,6 +118,7 @@ def main(config):
 @ray.remote
 def main_task(config):
     from verl.utils.fs import copy_local_path_from_hdfs
+    from verl.utils.reward_score.math_verify_v0_6_0 import compute_score as math_verify_v0_6_0_compute_score
     from transformers import AutoTokenizer
 
     # print initial config
@@ -182,10 +184,22 @@ def main_task(config):
         role_worker_mapping[Role.RewardModel] = ray.remote(RewardModelWorker)
         mapping[Role.RewardModel] = global_pool_id
 
-    reward_fn = RewardManager(tokenizer=tokenizer, num_examine=0)
+    reward_manager_name = config.get("reward_manager", "naive_math")
+    if reward_manager_name == "naive_math":
+        from verl.utils.reward_score.math import compute_score as naive_math_compute_score
+        compute_score = naive_math_compute_score
+    elif reward_manager_name == "prime":
+        from verl.utils.reward_score.prime import compute_score as prime_compute_score
+        compute_score = prime_compute_score
+    elif reward_manager_name == "math_verify_v0_6_0":
+        from verl.utils.reward_score.math_verify_v0_6_0 import compute_score as math_verify_v0_6_0_compute_score
+        compute_score = math_verify_v0_6_0_compute_score
+    else:
+        raise NotImplementedError
 
+    reward_fn = RewardManager(reward_fn=compute_score, tokenizer=tokenizer, num_examine=0)
     # Note that we always use function-based RM for validation
-    val_reward_fn = RewardManager(tokenizer=tokenizer, num_examine=1)
+    val_reward_fn = RewardManager(reward_fn=math_verify_v0_6_0_compute_score, tokenizer=tokenizer, num_examine=1)
 
     resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
 
